@@ -24,10 +24,10 @@ const userSchema = mongoose.Schema({
 });
 
 const exerciseSchema = mongoose.Schema({
-  username: { type: String, required: true },
+  userId: { type: String, required: true },
   description: { type: String, required: true },
   duration: { type: Number, required: true },
-  date: { type: String, required: true },
+  date: { type: Date, required: true },
 });
 
 const Users = mongoose.model("Users", userSchema);
@@ -50,7 +50,7 @@ app.get("/api/users", async (req, res) => {
 });
 
 app.post("/api/users/:id/exercises", async (req, res) => {
-  const userId = req.body._id;
+  const userId = req.params.id;
   const description = req.body.description;
   const duration = req.body.duration;
   let date;
@@ -60,19 +60,24 @@ app.post("/api/users/:id/exercises", async (req, res) => {
   } else {
     date = new Date();
   }
-  const dateString = date.toDateString();
-  const user = await Users.findOne(userId);
+  const user = await Users.findById(userId);
   if (!user) {
     res.json({ error: "User not found" });
   }
   const newExercise = new Exercise({
-    username: user.username,
+    userId: user._id,
     duration: duration,
     description: description,
-    date: dateString,
+    date: date,
   });
   await newExercise.save();
-  res.json(newExercise);
+  res.json({
+    username: user.username,
+    description: newExercise.description,
+    duration: newExercise.duration,
+    date: newExercise.date.toDateString(),
+    _id: user._id,
+  });
 });
 
 app.get("/api/users/:id/logs", async (req, res) => {
@@ -83,16 +88,16 @@ app.get("/api/users/:id/logs", async (req, res) => {
       return res.json({ error: "User not found" });
     }
 
-    let query = { username: user.username };
+    let query = { userId: user._id };
 
     // Parse optional query parameters: from, to, and limit
     if (req.query.from || req.query.to) {
       query.date = {};
       if (req.query.from) {
-        query.date.$gte = new Date(req.query.from).toDateString();
+        query.date.$gte = new Date(req.query.from);
       }
       if (req.query.to) {
-        query.date.$lte = new Date(req.query.to).toDateString();
+        query.date.$lte = new Date(req.query.to);
       }
     }
 
@@ -106,12 +111,17 @@ app.get("/api/users/:id/logs", async (req, res) => {
     }
 
     const log = await logQuery.exec();
+    const filteredLog = log.map((e) => ({
+      description: e.description,
+      duration: e.duration,
+      date: e.date.toDateString(),
+    }));
 
     res.json({
       username: user.username,
       count: log.length,
       _id: user._id,
-      log: log,
+      log: filteredLog,
     });
   } catch (error) {
     console.error(error);
